@@ -1,0 +1,46 @@
+name: Check New-Grad SWE Jobs
+
+on:
+  schedule:
+    # Runs every hour, on the hour (UTC). GitHub Actions cron can lag a bit
+    # during high load, so treat "every hour" as approximate.
+    - cron: "0 * * * *"
+  workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write  # needed so the workflow can commit the updated seen.json
+
+jobs:
+  check-jobs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Run job monitor
+        env:
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          # Uncomment if your SMTP provider uses a non-standard port or a
+          # different From address than SMTP_USERNAME:
+          # SMTP_PORT: "587"
+          # EMAIL_FROM: "you@example.com"
+          # Uncomment and edit to customize matching:
+          # KEYWORDS: "software engineer,swe,backend"
+          # EXCLUDE_KEYWORDS: "senior,staff,principal"
+        run: python check_jobs.py
+
+      - name: Commit updated seen-cache
+        run: |
+          git config user.name "job-monitor-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add seen.json
+          git diff --quiet --cached || git commit -m "Update seen jobs cache [skip ci]"
+          git push
