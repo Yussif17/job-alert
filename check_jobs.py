@@ -20,10 +20,14 @@ Optional env vars:
                       (case-insensitive OR match). Leave unset to match
                       all active Software category postings.
   EXCLUDE_KEYWORDS - comma-separated keywords to exclude (e.g. "Senior,Staff")
+  COMPANIES        - comma-separated company names to allow, replacing the
+                      built-in TOP_COMPANIES list. Set to "*" to allow every
+                      company.
 """
 
 import json
 import os
+import re
 import smtplib
 import sys
 import urllib.request
@@ -48,6 +52,87 @@ DEFAULT_EXCLUDE = [
     "sr.",
     "sr ",
 ]
+
+# Companies whose new-grad SWE offers are generally considered better than
+# Capital One / Roblox (comp, prestige, or both). Roblox and Capital One
+# themselves are deliberately left out. Names are matched after normalize().
+TOP_COMPANIES = [
+    # Quant / HFT
+    "jane street", "citadel", "citadel securities", "hudson river trading",
+    "jump trading", "two sigma", "d e shaw", "de shaw", "tower research capital",
+    "five rings capital", "five rings", "imc trading", "imc", "optiver",
+    "susquehanna", "sig", "drw", "akuna capital", "headlands tech holdings",
+    "the voleon group", "voleon", "radix trading", "xtx markets", "old mission",
+    "millennium", "cubist", "point72", "bridgewater", "chicago trading company",
+    "virtu financial",
+    # AI labs / top AI startups
+    "openai", "anthropic", "xai", "google deepmind", "deepmind", "scale ai",
+    "anysphere", "cursor", "perplexity", "mistral", "cohere", "character ai",
+    "harvey", "sierra", "decagon", "elevenlabs", "applied intuition",
+    "databricks", "glean", "cerebras", "fireworks ai", "physical intelligence",
+    # Big tech
+    "google", "meta", "apple", "microsoft", "amazon", "nvidia", "netflix",
+    "bytedance", "tiktok", "linkedin",
+    # Top-paying public tech / late-stage
+    "stripe", "palantir", "uber", "lyft", "airbnb", "doordash", "instacart",
+    "pinterest", "snap", "snowflake", "coinbase", "robinhood", "figma", "ramp",
+    "plaid", "brex", "notion", "rippling", "anduril", "affirm", "dropbox",
+    "reddit", "discord", "datadog", "confluent", "verkada", "whatnot",
+    "waymo", "nuro", "duolingo", "benchling",
+]
+
+US_STATE_CODES = {
+    "AL", "AK", "AZ", "AR", "CA", "CO", "CT", "DE", "DC", "FL", "GA", "HI", "ID",
+    "IL", "IN", "IA", "KS", "KY", "LA", "ME", "MD", "MA", "MI", "MN", "MS", "MO",
+    "MT", "NE", "NV", "NH", "NJ", "NM", "NY", "NC", "ND", "OH", "OK", "OR", "PA",
+    "RI", "SC", "SD", "TN", "TX", "UT", "VT", "VA", "WA", "WV", "WI", "WY", "PR",
+}
+US_STATE_NAMES = {
+    "alabama", "alaska", "arizona", "arkansas", "california", "colorado",
+    "connecticut", "delaware", "florida", "georgia", "hawaii", "idaho",
+    "illinois", "indiana", "iowa", "kansas", "kentucky", "louisiana", "maine",
+    "maryland", "massachusetts", "michigan", "minnesota", "mississippi",
+    "missouri", "montana", "nebraska", "nevada", "new hampshire", "new jersey",
+    "new mexico", "new york", "north carolina", "north dakota", "ohio",
+    "oklahoma", "oregon", "pennsylvania", "rhode island", "south carolina",
+    "south dakota", "tennessee", "texas", "utah", "vermont", "virginia",
+    "washington", "west virginia", "wisconsin", "wyoming", "washington dc",
+}
+# Shorthand the feed uses for US locations.
+US_ALIASES = {
+    "united states", "usa", "us", "remote in usa", "remote in us", "remote",
+    "sf", "south sf", "nyc", "la",
+}
+
+_SUFFIXES = re.compile(r"\b(inc|llc|ltd|corp|corporation|co|university|holdings? inc)$")
+
+
+def normalize(name):
+    name = re.sub(r"[^a-z0-9 ]", " ", name.lower())
+    name = re.sub(r"\s+", " ", name).strip()
+    return _SUFFIXES.sub("", name).strip()
+
+
+def is_us_location(location):
+    location = location.strip()
+    if location.lower() in US_STATE_NAMES or location.lower() in US_ALIASES:
+        return True
+    parts = [p.strip() for p in location.split(",")]
+    return len(parts) >= 2 and parts[-1] in US_STATE_CODES
+
+
+def is_us_job(job):
+    # Postings with no location listed are kept rather than silently dropped.
+    locations = job.get("locations") or []
+    return not locations or any(is_us_location(l) for l in locations)
+
+
+def load_companies():
+    raw = os.environ.get("COMPANIES", "")
+    if raw.strip() == "*":
+        return None
+    names = [c for c in raw.split(",") if c.strip()] or TOP_COMPANIES
+    return {normalize(c) for c in names}
 
 
 def load_keywords(env_var, default):
@@ -75,7 +160,11 @@ def fetch_listings():
         return json.load(resp)
 
 
-def matches(job, keywords, exclude_keywords):
+def matches(job, keywords, exclude_keywords, companies):
+    if not is_us_job(job):
+        return False
+    if companies is not None and normalize(job.get("company_name", "")) not in companies:
+        return False
     title = job.get("title", "").lower()
     if any(x in title for x in exclude_keywords):
         return False
@@ -121,6 +210,7 @@ def main():
 
     keywords = load_keywords("KEYWORDS", DEFAULT_KEYWORDS)
     exclude_keywords = load_keywords("EXCLUDE_KEYWORDS", DEFAULT_EXCLUDE)
+    companies = load_companies()
 
     listings = fetch_listings()
     seen = load_seen()
@@ -132,7 +222,7 @@ def main():
 
     new_matches = [
         j for j in active_software
-        if j["id"] not in seen and matches(j, keywords, exclude_keywords)
+        if j["id"] not in seen and matches(j, keywords, exclude_keywords, companies)
     ]
 
     # Always mark ALL currently-active software postings as seen, not just

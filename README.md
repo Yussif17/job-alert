@@ -51,6 +51,27 @@ EXCLUDE_KEYWORDS: "senior,staff,principal"
 keyword passes. `EXCLUDE_KEYWORDS` filters out titles containing any of those words regardless
 of keyword match. Defaults are already set in `check_jobs.py` to reasonable new-grad terms.
 
+### Company filter
+
+By default only companies in `TOP_COMPANIES` in `check_jobs.py` trigger an email. These are
+employers whose new-grad SWE offers are generally rated above Capital One / Roblox (quant/HFT
+firms, AI labs, big tech, and top-paying late-stage startups). Edit that list to tune it, or override
+it from the workflow:
+
+```yaml
+COMPANIES: "Jane Street,OpenAI,Stripe"   # only these companies
+COMPANIES: "*"                           # disable the company filter
+```
+
+Names are matched case-insensitively after removing punctuation and suffixes like "Inc", "LLC",
+and "University" (so `Akuna Capital University` matches `akuna capital`).
+
+### US-only
+
+Postings are only emailed if at least one location is in the US (`City, ST`, a state name,
+"United States", "Remote in USA", or shorthand like `SF`/`NYC`). Postings with no location
+listed are still sent. Adjust `is_us_location()` in `check_jobs.py` to change this.
+
 ## Notes
 
 - `seen.json` starts pre-seeded with all currently-active postings, so your first real run

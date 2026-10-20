@@ -35,6 +35,8 @@ jobs:
           # Uncomment and edit to customize matching:
           # KEYWORDS: "software engineer,swe,backend"
           # EXCLUDE_KEYWORDS: "senior,staff,principal"
+          # Override the built-in top-company allowlist ("*" disables it):
+          # COMPANIES: "Jane Street,OpenAI,Stripe"
         run: python check_jobs.py
 
       - name: Commit updated seen-cache
