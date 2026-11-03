@@ -1,7 +1,7 @@
 # New-Grad SWE Job Monitor
 
 Checks the [SimplifyJobs New-Grad-Positions](https://github.com/SimplifyJobs/New-Grad-Positions)
-feed every hour and emails you the list of new active software-engineering postings.
+feed every day at 9am Central and emails you the list of new active software-engineering postings.
 Already-seen postings are tracked in `seen.json` so you only get notified once per job.
 
 ## Setup (10 minutes, one time)
@@ -35,7 +35,7 @@ Add each of these:
 - Go to the **Actions** tab of your repo. If prompted, click "I understand my workflows, enable them."
 - Click into "Check New-Grad SWE Jobs" → **Run workflow** to trigger a first run manually and
   confirm you get the email.
-- After that it runs automatically every hour on its own — no server, no laptop needed to be on.
+- After that it runs automatically every day at 9am Central on its own — no server, no laptop needed to be on.
   You'll only actually receive an email on runs where there's at least one new matching posting.
 
 ## Customizing what gets posted

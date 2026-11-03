@@ -2,9 +2,12 @@ name: Check New-Grad SWE Jobs
 
 on:
   schedule:
-    # Runs every hour, on the hour (UTC). GitHub Actions cron can lag a bit
-    # during high load, so treat "every hour" as approximate.
-    - cron: "0 * * * *"
+    # Runs once a day at 9am Central time. GitHub cron is UTC-only and ignores
+    # daylight saving, so we schedule both 14:00 UTC (9am CDT, summer) and
+    # 15:00 UTC (9am CST, winter); the "Check time" step below skips whichever
+    # one isn't 9am in Chicago. GitHub cron can lag a bit under load.
+    - cron: "0 14 * * *"
+    - cron: "0 15 * * *"
   workflow_dispatch: {}  # lets you trigger a run manually from the Actions tab
 
 permissions:
@@ -14,15 +17,29 @@ jobs:
   check-jobs:
     runs-on: ubuntu-latest
     steps:
+      - name: Check time
+        id: gate
+        run: |
+          # Manual runs always go through; scheduled runs only at 9am Chicago time.
+          if [ "${{ github.event_name }}" != "schedule" ] || [ "$(TZ=America/Chicago date +%H)" = "09" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Not 9am in Chicago, skipping."
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check out repo
+        if: steps.gate.outputs.run == 'true'
         uses: actions/checkout@v4
 
       - name: Set up Python
+        if: steps.gate.outputs.run == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Run job monitor
+        if: steps.gate.outputs.run == 'true'
         env:
           SMTP_HOST: ${{ secrets.SMTP_HOST }}
           SMTP_USERNAME: ${{ secrets.SMTP_USERNAME }}
@@ -40,6 +57,7 @@ jobs:
         run: python check_jobs.py
 
       - name: Commit updated seen-cache
+        if: steps.gate.outputs.run == 'true'
         run: |
           git config user.name "job-monitor-bot"
           git config user.email "actions@users.noreply.github.com"
